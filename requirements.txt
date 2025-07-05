@@ -1,0 +1,6 @@
+flask
+solana
+base58
+PyNaCl
+requests
+pylibmc
