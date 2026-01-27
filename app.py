@@ -6,9 +6,15 @@ from solana.rpc.api import Client
 from solders.pubkey import Pubkey
 import config
 import requests
+import sentry_sdk
 import json
 import time
 import pylibmc
+
+sentry_sdk.init(
+    dsn=config.sentry_dsn,
+    send_default_pii=True,
+)
 
 app = Flask(__name__)
 client = Client(config.solana_rpc)
