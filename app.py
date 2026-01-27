@@ -168,6 +168,7 @@ def get_balance():
         balance_response = client.get_balance(public_key)
         sol_balance = balance_response.value / 1e9  # Convert lamports to SOL
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         return jsonify({'error': f'Failed to get SOL balance: {str(e)}'}), 500
 
     # Get V2EX token balance using the working implementation
@@ -175,6 +176,7 @@ def get_balance():
     try:
         v2ex_balance = get_token_balance(public_key_str, v2ex_mint)
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         print(f"Error getting V2EX balance: {str(e)}")
         v2ex_balance = 0
 
