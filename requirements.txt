@@ -3,4 +3,6 @@ solana
 base58
 PyNaCl
 requests
+sentry_sdk[flask]
 pylibmc
+pytest
