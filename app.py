@@ -9,6 +9,8 @@ import requests
 import sentry_sdk
 import json
 import time
+import struct
+import base64
 import pylibmc
 
 sentry_sdk.init(
@@ -101,6 +103,96 @@ def get_token_balance(address: str, token_mint: str) -> float:
         raise Exception(f"Network error getting token balance: {str(e)}")
     except Exception as e:
         raise Exception(f"Error getting token balance: {str(e)}")
+
+
+def get_token_holders_count(token_mint: str) -> int:
+    """Get the number of holders with non-zero balance for a token mint."""
+    payload = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "getProgramAccounts",
+        "params": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            {
+                "encoding": "base64",
+                "dataSlice": {
+                    "offset": 64,
+                    "length": 8
+                },
+                "filters": [
+                    {"dataSize": 165},
+                    {
+                        "memcmp": {
+                            "offset": 0,
+                            "bytes": token_mint
+                        }
+                    }
+                ]
+            }
+        ]
+    }
+
+    response = requests.post(
+        config.solana_rpc,
+        json=payload,
+        timeout=60,
+        headers={'Content-Type': 'application/json'}
+    )
+
+    if response.status_code != 200:
+        raise Exception(f"HTTP {response.status_code}: {response.text}")
+
+    data = response.json()
+
+    if "error" in data:
+        raise Exception(
+            f"RPC Error: {data['error'].get('message', 'Unknown error')}"
+        )
+
+    count = 0
+    for account in data["result"]:
+        raw = base64.b64decode(account["account"]["data"][0])
+        amount = struct.unpack('<Q', raw)[0]
+        if amount > 0:
+            count += 1
+
+    return count
+
+
+@app.route('/holders_count/<token>', methods=['GET'])
+def holders_count(token):
+    # Validate token mint is a valid base58 string
+    try:
+        decoded = base58.b58decode(token)
+        if len(decoded) != 32:
+            raise ValueError
+    except Exception:
+        return jsonify({'error': 'Invalid token mint address'}), 400
+
+    cache_key = f"holders:{token}"
+    if mc:
+        try:
+            cached_result = mc.get(cache_key)
+            if cached_result:
+                return jsonify(cached_result)
+        except Exception as e:
+            print(f"Cache read error: {e}")
+
+    try:
+        count = get_token_holders_count(token)
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        return jsonify({'error': f'Failed to get holders count: {str(e)}'}), 500
+
+    result = {'holders_count': count, 'token': token}
+
+    if mc:
+        try:
+            mc.set(cache_key, result, time=3600)
+        except Exception as e:
+            print(f"Cache write error: {e}")
+
+    return jsonify(result)
 
 
 @app.route('/verify_signature', methods=['POST'])
